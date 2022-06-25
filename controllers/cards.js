@@ -12,15 +12,28 @@ module.exports = {
             phone: joi.string().required().regex(/^[0-9]{8,12}$/),
             address: joi.string().min(4).max(255),
             photo: joi.string().min(10).max(255),
+            //card_id defined as auto-increment
         });
         const {
             error,
+            value
         } = schema.validate(reqBody);
 
         if (error) {
             res.status(400).send(`Error adding business card: ${error}`);
             console.log(error.details[0].message);
             return;
+        }
+
+        const sqlPre = 'SELECT * FROM clients_info WHERE id=?;'
+
+        try {
+            const result = await database.query(sqlPre, [reqBody.client_id]);
+            let rows = result[0]
+            if (rows.length === 0) return res.status(400).send("Wrong client id");
+        } catch (err) {
+            res.status(500).send('Something went wrong');
+            console.log(err);
         }
 
         const sql =
@@ -41,7 +54,7 @@ module.exports = {
             );
         } catch (err) {
             console.log(`Error: ${err}`)
-            res.status(409).send('Failed to add card');
+            res.status(500).send('Something went wrong');
             //in case there is no matching client_id in the database 
             return;
         }
@@ -58,14 +71,18 @@ module.exports = {
             value
         } = schema.validate(req.params);
 
-        console.log("value.card_id:" + value.id)
+        if (error) {
+            res.status(400).send(`Wrong request: ${error}`);
+            console.log(error.details[0].message);
+            return;
+        }
 
         const sql = 'SELECT * FROM clients_cards WHERE card_id=?;';
 
         try {
             const result = await database.query(sql, [value.id]);
             let rows = result[0]
-            if (rows[0] === undefined) return res.status(401).send("Card not found");
+            if (rows[0] === undefined) return res.status(404).send("Card not found");
             res.status(200)
                 .json({
                     client_id: rows[0].client_id,
@@ -78,7 +95,7 @@ module.exports = {
 
         } catch (err) {
             console.log(err.message);
-            res.status(400).send('Error finding card');
+            res.status(500).send('Something went wrong');
             return;
         }
     },
@@ -104,7 +121,7 @@ module.exports = {
 
         if (error) {
             console.log(`Error: ${error}`);
-            res.status(400).send(`error updating card: ${error}`);
+            res.status(400).send(`Error updating card: ${error}`);
             return;
         }
         const keys = Object.keys(value);
@@ -120,7 +137,7 @@ module.exports = {
             if (rows[0] === undefined) return res.status(404).send("Card not found");
 
         } catch (err) {
-            res.status(400).send('Error updating card');
+            res.status(500).send('Something went wrong');
             console.log(err.message);
         }
 
@@ -130,8 +147,7 @@ module.exports = {
             res.status(200).send(`Card #${req.params.id} updated`);
         } catch (err) {
             console.log(err.message);
-            res.status(401).send('failure editing card');
-            return;
+            res.status(500).send('Something went wrong');
         }
 
     },
@@ -147,7 +163,7 @@ module.exports = {
         } = schema.validate(req.params);
 
         if (error) {
-            res.status(400).send('error deleting card');
+            res.status(400).send('error ${error}');
             console.log(error.details[0].message);
             return;
         }
@@ -159,7 +175,7 @@ module.exports = {
             let rows = result[0]
             if (rows[0] === undefined) return res.status(404).send("Card not found");
         } catch (err) {
-            res.status(400).send('error deleting card');
+            res.status(500).send('Something went wrong');
             console.log(err.message);
         }
 
@@ -169,7 +185,7 @@ module.exports = {
             const result = await database.query(sql, [value.id]);
             res.status(200).send(`Card #${value.id} successfully deleted`)
         } catch (err) {
-            res.status(400).send('error deleting card');
+            res.status(500).send('Something went wrong');
             console.log(err.message);
         }
     },
