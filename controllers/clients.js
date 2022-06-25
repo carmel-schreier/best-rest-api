@@ -2,23 +2,21 @@ const joi = require("joi");
 const database = require("./database");
 const bcrypt = require("bcrypt");
 const utility = require("../shared/utilityFunctions");
-//const fileMgmt = require('../shared/fileMgmt');
+
 
 module.exports = {
     addClient: async function (req, res, next) {
         const reqBody = req.body;
 
-        // להעביר ולראות איזה תנאי צריך
-
         const schema = joi.object({
-            id: joi.number().required().min(1).max(4000),
-            name: joi.string().required().min(2).max(100),
+            id: joi.number().required().min(1).max(4000), //id defined as primary kee in database
+            name: joi.string().required().min(2).max(255),
             email: joi
                 .string()
                 .required()
                 .email()
                 .regex(/^[^@]+@[^@]+$/),
-            password: joi.string().required().min(6).max(30),
+            password: joi.string().required().min(6).max(255),
             type: joi.string().valid("regular", "business").default("regular"),
         });
         const {
@@ -27,11 +25,22 @@ module.exports = {
         } = schema.validate(reqBody);
 
         if (error) {
-            res.status(400).send(`error adding client: ${error}`);
+            res.status(400).send(`Error adding client: ${error}`);
             console.log(error.details[0].message);
             return;
         }
         const password = await bcrypt.hash(reqBody.password, 10);
+
+        const sqlPre = 'SELECT * FROM clients_info WHERE client_id=?;'
+
+        try {
+            const result = await database.query(sqlPre, [value.id]);
+            let rows = result[0]
+            if (rows.length !== 0) return res.status(409).send("Client id already in use");
+        } catch (err) {
+            res.status(500).send('Something went wrong');
+            console.log(err.message);
+        }
 
         const sql =
             "INSERT INTO clients_info(id, name, email, password, type)" +
@@ -47,10 +56,10 @@ module.exports = {
             ]);
         } catch (err) {
             console.log(`Error: ${err}`);
-            res.status(401).send("Failed to add client");
+            res.status(500).send("Something went wrong");
             return;
         }
-        console.log("reqBody = " + reqBody);
+
         res.status(200).send({
             name: reqBody.name,
             id: reqBody.id,
@@ -66,12 +75,19 @@ module.exports = {
         const {
             error,
             value
-        } = schema.validate(reqBody.id);
-
-        let routId = value.id;
+        } = schema.validate(reqBody);
+        if (error) {
+            res.status(400).send(`Incorrect id: ${error}`);
+            console.log(error.details[0].message);
+            return;
+        }
+        let bodyId = value.id;
         const token = req.header("x-auth-token");
         let payload = utility.getPayload(token);
-        if (payload.id != routId) return res.status(401).send("Wrong id");
+        if (payload.id != bodyId) return res.status(403).send("wrong id");
+
+        //The need to pass id in request body can be omitted, not clear if needed from the task wording 
+
 
         const sql = "SELECT * FROM clients_info WHERE id=?;";
 
@@ -87,7 +103,7 @@ module.exports = {
             });
         } catch (err) {
             console.log(`Error: ${err}`);
-            res.status(400).send("No match for your request");
+            res.status(500).send(`Something went wrong`);
             return;
         }
     },
@@ -102,7 +118,7 @@ module.exports = {
 
         if (error) {
             console.log(error);
-            res.status(400).send("Not found");
+            res.status(404).send(error);
             return;
         }
 
@@ -116,7 +132,7 @@ module.exports = {
             res.status(200).json(rows);
         } catch (err) {
             console.log(err);
-            res.send(err);
+            res.status(500).send(`Something went wrong`);
         }
     },
 };
